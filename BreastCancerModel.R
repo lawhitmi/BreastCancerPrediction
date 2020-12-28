@@ -33,7 +33,7 @@ test = data[-train.idx,]
 library(e1071) #For SVM
 
 # Train
-svmfit = svm(Diag~.,data=train, kernel='linear', cost=10, scale=TRUE)
+svmfit = svm(Diag~.,data=train, kernel='linear', cost=20, scale=TRUE)
 # The svm below uses only the variables which were identified as significant using the maximum AIC method in the LogReg section below (stepAIC())
 # This svm achieves 98.6% training accuracy and 98.2% test accuracy with just 16 variables(/30)
 svmfit1 = svm(Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
@@ -44,7 +44,7 @@ summary(svmfit)
 ypred = predict(svmfit, train)
 table(ypred, truth=train$Diag)
 
-sum(diag(prop.table(table(ypred, truth=train$Diag)))) #99.3% Accuracy
+sum(diag(prop.table(table(ypred, truth=train$Diag)))) #99.6% Accuracy
 
 # Test
 pred.test = predict(svmfit, test)
