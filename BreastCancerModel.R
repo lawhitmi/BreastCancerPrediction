@@ -26,12 +26,19 @@ train.idx = sample(1:numObs,0.8*numObs)
 train = data[train.idx,]
 test = data[-train.idx,]
 
+##############################################
 # SVM Classifier
+##############################################
 
 library(e1071) #For SVM
 
 # Train
 svmfit = svm(Diag~.,data=train, kernel='linear', cost=10, scale=TRUE)
+# The svm below uses only the variables which were identified as significant using the maximum AIC method in the LogReg section below (stepAIC())
+# This svm achieves 98.6% training accuracy and 98.2% test accuracy with just 16 variables(/30)
+svmfit1 = svm(Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
+              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train, kernel='linear',
+              cost=10, scale=TRUE)
 summary(svmfit)
 
 ypred = predict(svmfit, train)
@@ -45,9 +52,36 @@ table(pred.test, truth=test$Diag)
 
 sum(diag(prop.table(table(pred.test, truth=test$Diag)))) #98.2% Accuracy
 
+#####################################################################
+# Logistic Regression
+#####################################################################
+library(MASS) # for the stepAIC method
 
+trainlm = train
+trainlm$Diag = as.numeric(trainlm$Diag)-1
+testlm = test
+testlm$Diag = as.numeric(testlm$Diag)-1
+
+# Train
+lm = glm(Diag~.,data=trainlm, family='binomial')
+summary(lm)
+lm.probs = predict(lm,type="response")
+lm.pred = rep(0,length(lm.probs))
+lm.pred[lm.probs>.5]=1
+table(lm.pred, trainlm$Diag)
+
+sum(diag(prop.table(table(lm.pred, truth=trainlm$Diag)))) # 100% Accuracy
+mod.select = stepAIC(lm) #this iteratively determines the best model using the AIC value
+# Test
+probs.test = predict(lm, testlm, type="response")
+pred.test = rep(0,length(probs.test))
+pred.test[probs.test>0.5] = 1
+table(pred.test, testlm$Diag)
+sum(diag(prop.table(table(pred.test, truth=testlm$Diag)))) # 94.7% Accuracy
+
+####################################################################
 # Neural Network
-
+####################################################################
 library(tensorflow)
 install_tensorflow(method='conda', envname='r-reticulate')
 library(keras)
