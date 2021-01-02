@@ -41,6 +41,10 @@ svmfit1 = svm(Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radiu
               cost=10, scale=TRUE)
 summary(svmfit)
 
+
+# Trying some plot of the svmfit
+plot(svmfit, train, radius ~ max_area)
+
 ypred = predict(svmfit, train)
 table(ypred, truth=train$Diag)
 
