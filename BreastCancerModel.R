@@ -21,7 +21,7 @@ pairs(data[,c(1,22:31)])
 # Test/Train Split
 set.seed(2)
 numObs = dim(data)[1]
-train.idx = sample(1:numObs,0.8*numObs)
+train.idx = sample(1:numObs,0.8*numObs) # Reserve 20% of data for testing (CV used throughout, no need for validation set)
 
 train = data[train.idx,]
 test = data[-train.idx,]
@@ -32,29 +32,47 @@ test = data[-train.idx,]
 
 library(e1071) #For SVM
 
-# Train
-svmfit = svm(Diag~.,data=train, kernel='linear', cost=20, scale=TRUE)
+# Function for Evaluating SVM Performance
+eval_perf <- function(clf, data) {
+  ypred = predict(clf, data)
+  
+  #Print out confusion matrix
+  print(table(ypred, truth=data$Diag))
+  
+  #Return Accuracy of Model
+  return(sum(diag(prop.table(table(ypred, truth=data$Diag)))))
+}
+
+# TRAIN
+
+# 10 fold CV with HPO on 'Cost' and 'Kernel'
+svm.hpo = tune(svm, Diag~., data=train, ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
+summary(svm.hpo) # C=2, radial basis function
+
+eval_perf(svm.hpo$best.model, train) #98.9%
+
+# Check if scale=FALSE improves performance (as this change can cause 'max iterations reached' error)
+svm.noscale = tune(svm, Diag~., data=train, kernel='radial', scale=FALSE)
+summary(svm.noscale) # error: 0.36  -> Stick with scale=TRUE
+
 # The svm below uses only the variables which were identified as significant using the maximum AIC method in the LogReg section below (stepAIC())
-# This svm achieves 98.6% training accuracy and 98.2% test accuracy with just 16 variables(/30)
-svmfit1 = svm(Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
-              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train, kernel='linear',
-              cost=10, scale=TRUE)
-summary(svmfit)
+# This svm achieves 98.6% training accuracy with just 16 variables(/30)
+svm.out = tune(svm, Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
+              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train, kernel='radial',
+              cost=2, scale=TRUE)
+summary(svm.out)
+summary(svm.out$best.model)
+eval_perf(svm.out$best.model,train)
 
 
 # Trying some plot of the svmfit
-plot(svmfit, train, radius ~ max_area)
-
-ypred = predict(svmfit, train)
-table(ypred, truth=train$Diag)
-
-sum(diag(prop.table(table(ypred, truth=train$Diag)))) #99.6% Accuracy
+plot(svm.hpo$best.model, train, max_perim ~ max_area)
 
 # Test
-pred.test = predict(svmfit, test)
-table(pred.test, truth=test$Diag)
+eval_perf(svm.hpo$best.model, test) #Acc: 98.2%
 
-sum(diag(prop.table(table(pred.test, truth=test$Diag)))) #98.2% Accuracy
+####ADD ROC CURVE????#####
+
 
 #####################################################################
 # Logistic Regression
@@ -67,21 +85,15 @@ testlm = test
 testlm$Diag = as.numeric(testlm$Diag)-1
 
 # Train
-lm = glm(Diag~.,data=trainlm, family='binomial')
+lm = tune(glm,Diag~.,data=trainlm, family='binomial')
 summary(lm)
-lm.probs = predict(lm,type="response")
+lm.probs = predict(lm$best.model,type="response")
 lm.pred = rep(0,length(lm.probs))
 lm.pred[lm.probs>.5]=1
 table(lm.pred, trainlm$Diag)
 
-sum(diag(prop.table(table(lm.pred, truth=trainlm$Diag)))) # 100% Accuracy
+sum(diag(prop.table(table(lm.pred, truth=trainlm$Diag)))) # 100% Accuracy (Overfitted)
 mod.select = stepAIC(lm) #this iteratively determines the best model using the AIC value
-# Test
-probs.test = predict(lm, testlm, type="response")
-pred.test = rep(0,length(probs.test))
-pred.test[probs.test>0.5] = 1
-table(pred.test, testlm$Diag)
-sum(diag(prop.table(table(pred.test, truth=testlm$Diag)))) # 94.7% Accuracy
 
 ####################################################################
 # Neural Network
@@ -109,6 +121,7 @@ x_test = normalize(x_test, axis=2)
 
 # One-hot Encode Target Variable
 y_test_vec = as.numeric(y_test)-1
+y_train_vec = as.numeric(y_train)-1
 y_train = to_categorical(as.numeric(y_train)-1)
 y_test = to_categorical(as.numeric(y_test)-1)
 y_train = as.matrix(y_train)
@@ -129,11 +142,11 @@ train_model <- function(layers){
   start = TRUE
   for(i in layers) {
     if (start==TRUE) {
-      model %>% layer_dense(units = i, activation = 'relu', input_shape = c(30))
+      model %>% layer_dense(units = i, activation = 'sigmoid', input_shape = c(30))
       prev_layer = i
       start = FALSE
     } else {
-      model %>% layer_dense(units = i, activation = 'relu', input_shape = c(prev_layer))
+      model %>% layer_dense(units = i, activation = 'sigmoid', input_shape = c(prev_layer))
       prev_layer = i
     }
   }
@@ -152,36 +165,45 @@ train_model <- function(layers){
   history <- model %>% fit(
     x_train, 
     y_train, 
-    epochs = 200,
+    epochs =500,
     batch_size = 5, 
     validation_split = 0.2,
     verbose=0,
     callbacks = list(print_dot_callback)
   )
   
-  plot(history)
-  
   train_score <- model %>% evaluate(x_train, y_train, batch_size=5)
   
-  return(c(model,train_score))
+  return(list(model,train_score,history))
 }
 
-layers = c(64,64,32)
+layers = c(64,32,16)
 res = train_model(layers)
-#64/32/16 : 94.3,
-#64/32/32 : 93.2,
-#64/32 : 92.8,
+plot(res[[3]])
+#relu:
+#64/32/16 : 94.3
+#64/32/32 : 93.2
+#64/32 : 92.8
 #64/64/32: 88.6,93.9
+#Epochs 300:
+#64/32/16 : 94.9
+#Epochs 400: 
+#64/32/16 : 96.0
+#Epochs 500:
+#64/32/16 : 95.6
+#sigmoid:
+#64/32/16 : 92.3
+#64/32/32 : 90.3
 
 
-classes <- model %>% predict_classes(x_train, batch_size=5)
-table(y_test_vec, classes)
+classes <- res[[1]] %>% predict_classes(x_train, batch_size=5)
+table(y_train_vec, classes)
 
 
 # Evaluate on Test Data
-score <- model %>% evaluate(x_test, y_test, batch_size = 5)
+score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5)
 
-classes <- model %>% predict_classes(x_train, batch_size=5)
+classes <- res[[1]] %>% predict_classes(x_test, batch_size=5)
 table(y_test_vec, classes)
 
 
