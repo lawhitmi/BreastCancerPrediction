@@ -142,11 +142,11 @@ train_model <- function(layers){
   start = TRUE
   for(i in layers) {
     if (start==TRUE) {
-      model %>% layer_dense(units = i, activation = 'sigmoid', input_shape = c(30))
+      model %>% layer_dense(units = i, activation = 'relu', input_shape = c(30))
       prev_layer = i
       start = FALSE
     } else {
-      model %>% layer_dense(units = i, activation = 'sigmoid', input_shape = c(prev_layer))
+      model %>% layer_dense(units = i, activation = 'relu', input_shape = c(prev_layer))
       prev_layer = i
     }
   }
@@ -188,7 +188,7 @@ plot(res[[3]])
 #Epochs 300:
 #64/32/16 : 94.9
 #Epochs 400: 
-#64/32/16 : 96.0
+#64/32/16 : 96.0 #Choose this, validation results start to diverge after this point (see plot)
 #Epochs 500:
 #64/32/16 : 95.6
 #sigmoid:
@@ -201,7 +201,7 @@ table(y_train_vec, classes)
 
 
 # Evaluate on Test Data
-score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5)
+score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5) # 97.4%
 
 classes <- res[[1]] %>% predict_classes(x_test, batch_size=5)
 table(y_test_vec, classes)
