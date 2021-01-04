@@ -1,5 +1,8 @@
 # Breast Cancer Prediction
 
+
+library(ggplot2)
+
 # Load Data
 data = read.csv('Data/wdbc.data', header=FALSE)
 
@@ -48,7 +51,20 @@ eval_perf <- function(clf, data) {
   print(table(ypred, truth=data$Diag))
   
   #Return Accuracy of Model
-  return(sum(diag(prop.table(table(ypred, truth=data$Diag)))))
+  return(list(sum(diag(prop.table(table(ypred, truth=data$Diag)))),ypred))
+}
+
+# Function for Pretty Plot of Confusion Matrix
+plot_conf <- function(pred, truth) {
+  conf_mat = as.data.frame(table(predicted=pred,truth=truth))
+  ggplot(data=conf_mat, mapping=aes(x=truth,y=predicted))+
+    geom_tile(aes(fill=Freq))+
+    geom_text(aes(label=sprintf("%1.0f", Freq)), vjust=0.5)+
+    scale_fill_gradient(low="white",
+                        high="green",
+                        trans="log",
+                        guide=FALSE)+
+    xlim(rev(levels(conf_mat$truth)))
 }
 
 # TRAIN
@@ -57,7 +73,10 @@ eval_perf <- function(clf, data) {
 svm.hpo = tune(svm, Diag~., data=train, ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
 summary(svm.hpo) # C=2, radial basis function
 
-eval_perf(svm.hpo$best.model, train) #98.9%
+perf.hpo = eval_perf(svm.hpo$best.model, train) 
+perf.hpo[1] #98.9%
+
+plot_conf(perf.hpo[[2]], train$Diag)
 
 # Check if scale=FALSE improves performance (as this change can cause 'max iterations reached' error)
 svm.noscale = tune(svm, Diag~., data=train, kernel='radial', scale=FALSE)
@@ -70,15 +89,19 @@ svm.out = tune(svm, Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness
               cost=2, scale=TRUE)
 summary(svm.out)
 summary(svm.out$best.model)
-eval_perf(svm.out$best.model,train)
+perf.out = eval_perf(svm.out$best.model,train)
+perf.out[1]
+
 
 
 # Trying some plot of the svmfit
 plot(svm.hpo$best.model, train, max_perim ~ max_area)
 
 # Test
-eval_perf(svm.hpo$best.model, test) #Acc: 98.2%
+test.hpo=eval_perf(svm.hpo$best.model, test) 
+test.hpo[1] #Acc: 98.2%
 
+plot_conf(test.hpo[[2]], test$Diag)
 ####ADD ROC CURVE????#####
 
 
@@ -112,7 +135,6 @@ library(keras)
 library(tensorflow)
 library(dplyr) 
 library(tfdatasets) # needed for 'feature_spec' function
-library(ggplot2)
 
 x_train = train[,-1]
 y_train = train[,1]
