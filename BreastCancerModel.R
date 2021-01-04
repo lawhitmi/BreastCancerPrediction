@@ -24,6 +24,8 @@ table(data$Diag) #B: 357 M: 212
 
 sum(is.na(data)) #0 -> no missing data
 
+sum(duplicated(data)) #0 -> no duplicate data
+
 # Test/Train Split
 set.seed(2)
 numObs = dim(data)[1]
