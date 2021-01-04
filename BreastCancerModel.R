@@ -18,6 +18,12 @@ pairs(data[,1:11])
 pairs(data[,c(1,12:21)])
 pairs(data[,c(1,22:31)])
 
+summary(data)
+
+table(data$Diag) #B: 357 M: 212
+
+sum(is.na(data)) #0 -> no missing data
+
 # Test/Train Split
 set.seed(2)
 numObs = dim(data)[1]
