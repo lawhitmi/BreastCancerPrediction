@@ -17,6 +17,12 @@ colnames(data) = c('ID', 'Diag', 'radius', 'texture','perimeter', 'area', 'smoot
 data = subset(data, select=-ID)
 
 # EDA
+
+# We can chech the relation between Diag and concave_points and several other variables
+p1 <- ggplot(data=data, mapping = aes(x = concave_points, fill = Diag))
+p1 <- p1 + geom_histogram(aes(y = ..density..), alpha = 0.6) + ggtitle("Distribution Concave Points by Diagnosis")
+p1
+
 pairs(data[,1:11])
 pairs(data[,c(1,12:21)])
 pairs(data[,c(1,22:31)])
@@ -68,6 +74,16 @@ plot_conf <- function(pred, truth) {
 }
 
 # TRAIN
+
+# For the document example plot, we can train the model as following:
+svm.hpo = tune(svm, Diag~max_concpts+max_perim, data=train, 
+               ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), 
+                           kernel=c('radial','linear','polynomial')), 
+               scale=TRUE)
+# The best model for plotting
+svm.hpo$best.model # radial and cost 2
+# Trying some plot of the svmfit
+plot(svm.hpo$best.model, train, max_concpts~max_perim)
 
 # 10 fold CV with HPO on 'Cost' and 'Kernel'
 svm.hpo = tune(svm, Diag~., data=train, ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
