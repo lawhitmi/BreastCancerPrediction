@@ -18,11 +18,14 @@ data = subset(data, select=-ID)
 
 # EDA
 
-# We can chech the relation between Diag and concave_points and several other variables
-p1 <- ggplot(data=data, mapping = aes(x = concave_points, fill = Diag))
-p1 <- p1 + geom_histogram(aes(y = ..density..), alpha = 0.6) + ggtitle("Distribution Concave Points by Diagnosis")
-p1
+# We can chech the relation between Diag and variables
+for (i in colnames(data)[-1]) {
+  p1 <- ggplot(data=data, mapping = aes(x = !!rlang::sym(i), fill = Diag))
+  p1 <- p1 + geom_histogram(aes(y = ..density..), alpha = 0.6, bins = 30) + ggtitle(paste0('Distribution of ', i, ' by Diagnosis'))
+  print(p1)
+}
 
+# Look for correlation between variables
 pairs(data[,1:11])
 pairs(data[,c(1,12:21)])
 pairs(data[,c(1,22:31)])
@@ -113,7 +116,7 @@ perf.out[1]
 # Trying some plot of the svmfit
 plot(svm.hpo$best.model, train, max_perim ~ max_area)
 
-# Test
+# TEST
 test.hpo=eval_perf(svm.hpo$best.model, test) 
 test.hpo[1] #Acc: 98.2%
 
@@ -131,7 +134,7 @@ trainlm$Diag = as.numeric(trainlm$Diag)-1
 testlm = test
 testlm$Diag = as.numeric(testlm$Diag)-1
 
-# Train
+# TRAIN
 lm = tune(glm,Diag~.,data=trainlm, family='binomial')
 summary(lm)
 lm.probs = predict(lm$best.model,type="response")
@@ -223,6 +226,8 @@ train_model <- function(layers){
   return(list(model,train_score,history))
 }
 
+# TRAIN
+ 
 layers = c(64,32,16)
 res = train_model(layers)
 plot(res[[3]])
@@ -246,7 +251,7 @@ classes <- res[[1]] %>% predict_classes(x_train, batch_size=5)
 table(y_train_vec, classes)
 
 
-# Evaluate on Test Data
+# TEST
 score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5) # 97.4%
 
 classes <- res[[1]] %>% predict_classes(x_test, batch_size=5)
