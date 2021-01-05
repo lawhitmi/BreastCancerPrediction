@@ -2,6 +2,7 @@
 
 
 library(ggplot2)
+library(pROC)
 
 # Load Data
 data = read.csv('Data/wdbc.data', header=FALSE)
@@ -117,12 +118,19 @@ perf.out[1]
 plot(svm.hpo$best.model, train, max_perim ~ max_area)
 
 # TEST
-test.hpo=eval_perf(svm.hpo$best.model, test) 
+best.svm = svm(Diag~., data=train, prob=TRUE, cost=2, scale=TRUE, kernel='radial')
+
+test.hpo=eval_perf(best.svm, test) 
 test.hpo[1] #Acc: 98.2%
 
 plot_conf(test.hpo[[2]], test$Diag)
-####ADD ROC CURVE????#####
 
+# ROC curve
+test.pred = predict(best.svm, test, prob=TRUE)
+test.predprob = attr(test.pred, 'probabilities')[,1]
+roc.obj1 = roc(test$Diag, test.predprob)
+ggroc(roc.obj1)
+auc(roc.obj1)
 
 #####################################################################
 # Logistic Regression
