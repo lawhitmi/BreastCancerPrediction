@@ -17,22 +17,6 @@ colnames(data) = c('ID', 'Diag', 'radius', 'texture','perimeter', 'area', 'smoot
 # Remove ID column
 data = subset(data, select=-ID)
 
-# EDA
-
-# We can chech the relation between Diag and variables
-for (i in colnames(data)[-1]) {
-  p1 <- ggplot(data=data, mapping = aes(x = !!rlang::sym(i), fill = Diag))
-  p1 <- p1 + geom_histogram(aes(y = ..density..), alpha = 0.6, bins = 30) + ggtitle(paste0('Distribution of ', i, ' by Diagnosis'))
-  print(p1)
-}
-
-# Look for correlation between variables
-pairs(data[,1:11])
-pairs(data[,c(1,12:21)])
-pairs(data[,c(1,22:31)])
-
-summary(data)
-
 table(data$Diag) #B: 357 M: 212
 
 sum(is.na(data)) #0 -> no missing data
@@ -46,6 +30,26 @@ train.idx = sample(1:numObs,0.8*numObs) # Reserve 20% of data for testing (CV us
 
 train = data[train.idx,]
 test = data[-train.idx,]
+
+# EDA
+
+# We can chech the relation between Diag and variables
+for (i in colnames(train)[-1]) {
+  p1 <- ggplot(data=train, mapping = aes(x = !!rlang::sym(i), fill = Diag))
+  p1 <- p1 + geom_histogram(aes(y = ..density..), alpha = 0.6, bins = 30) + ggtitle(paste0('Distribution of ', i, ' by Diagnosis'))
+  print(p1)
+}
+
+# Look for correlation between variables
+pairs(train[,1:11])
+pairs(train[,c(1,12:21)])
+pairs(train[,c(1,22:31)])
+
+summary(train)
+
+# PCA
+pr.out<-prcomp(train[,-1],scale.=TRUE)
+plot(pr.out$x[,1:2], col=as.numeric(train[,1]))
 
 ##############################################
 # SVM Classifier
@@ -65,7 +69,7 @@ eval_perf <- function(clf, data) {
 }
 
 # Function for Pretty Plot of Confusion Matrix
-plot_conf <- function(pred, truth) {
+plot_conf <- function(pred, truth, title) {
   conf_mat = as.data.frame(table(predicted=pred,truth=truth))
   ggplot(data=conf_mat, mapping=aes(x=truth,y=predicted))+
     geom_tile(aes(fill=Freq))+
@@ -74,11 +78,13 @@ plot_conf <- function(pred, truth) {
                         high="green",
                         trans="log",
                         guide=FALSE)+
-    xlim(rev(levels(conf_mat$truth)))
+    xlim(rev(levels(conf_mat$truth)))+
+    ggtitle(title)
 }
 
 # TRAIN
 
+######## Model trained for obtaining plot to demonstrate SVM Method ####################
 # For the document example plot, we can train the model as following:
 svm.hpo = tune(svm, Diag~max_concpts+max_perim, data=train, 
                ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), 
@@ -86,8 +92,9 @@ svm.hpo = tune(svm, Diag~max_concpts+max_perim, data=train,
                scale=TRUE)
 # The best model for plotting
 svm.hpo$best.model # radial and cost 2
-# Trying some plot of the svmfit
+# Trying some plots of the svmfit
 plot(svm.hpo$best.model, train, max_concpts~max_perim)
+########################################################################################
 
 # 10 fold CV with HPO on 'Cost' and 'Kernel'
 svm.hpo = tune(svm, Diag~., data=train, ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
@@ -96,26 +103,31 @@ summary(svm.hpo) # C=2, radial basis function
 perf.hpo = eval_perf(svm.hpo$best.model, train) 
 perf.hpo[1] #98.9%
 
-plot_conf(perf.hpo[[2]], train$Diag)
+plot_conf(perf.hpo[[2]], train$Diag, 'SVM Training Confusion Matrix')
 
 # Check if scale=FALSE improves performance (as this change can cause 'max iterations reached' error)
 svm.noscale = tune(svm, Diag~., data=train, kernel='radial', scale=FALSE)
-summary(svm.noscale) # error: 0.36  -> Stick with scale=TRUE
+summary(svm.noscale) # error: 0.36 vs. ~0.03 for scaled  -> Stick with scale=TRUE
 
-# The svm below uses only the variables which were identified as significant using the maximum AIC method in the LogReg section below (stepAIC())
+# 10 fold CV with HPO on 'Cost' and 'Kernel' and PCA preprocessing
+train_pca = cbind(as.data.frame(train$Diag),as.data.frame(pr.out$x[,1:15]))
+colnames(train_pca)[1] = 'Diag'
+svm.pca = tune(svm, Diag~., data=train_pca,
+               ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=FALSE)
+summary(svm.pca) # C=0.1, linear
+
+perf.pca = eval_perf(svm.pca$best.model, train_pca) 
+perf.pca[1] # 98.6%
+
+# The svm below uses only the variables which were identified as significant using the stepAIC method in the LogReg section below
 # This svm achieves 98.6% training accuracy with just 16 variables(/30)
 svm.out = tune(svm, Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
-              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train, kernel='radial',
-              cost=2, scale=TRUE)
+              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train,
+              ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
 summary(svm.out)
-summary(svm.out$best.model)
+summary(svm.out$best.model) #C=1, linear
 perf.out = eval_perf(svm.out$best.model,train)
-perf.out[1]
-
-
-
-# Trying some plot of the svmfit
-plot(svm.hpo$best.model, train, max_perim ~ max_area)
+perf.out[1] #98.6
 
 # TEST
 best.svm = svm(Diag~., data=train, prob=TRUE, cost=2, scale=TRUE, kernel='radial')
@@ -123,7 +135,10 @@ best.svm = svm(Diag~., data=train, prob=TRUE, cost=2, scale=TRUE, kernel='radial
 test.hpo=eval_perf(best.svm, test) 
 test.hpo[1] #Acc: 98.2%
 
-plot_conf(test.hpo[[2]], test$Diag)
+plot_conf(test.hpo[[2]], test$Diag, 'SVM Test Confusion Matrix')
+
+pr.out.test<-prcomp(test[,-1],scale.=TRUE)
+plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]))
 
 # ROC curve
 test.pred = predict(best.svm, test, prob=TRUE)
@@ -133,7 +148,7 @@ ggroc(roc.obj1)
 auc(roc.obj1)
 
 #####################################################################
-# Logistic Regression
+# Logistic Regression - Just used for feature selection
 #####################################################################
 library(MASS) # for the stepAIC method
 
@@ -143,14 +158,19 @@ testlm = test
 testlm$Diag = as.numeric(testlm$Diag)-1
 
 # TRAIN
-lm = tune(glm,Diag~.,data=trainlm, family='binomial')
+lm = glm(Diag~.,data=trainlm, family='binomial') 
+# glm.fit: algorithm did not converge
+# glm.fit: fitted probabilities numerically 0 or 1 occurred
+# Training data could be separable, or probabilities of some points are indistinguishable from 0.
+# didn't further investigate this as the StepAIC method below still gives some results.
+
 summary(lm)
-lm.probs = predict(lm$best.model,type="response")
+lm.probs = predict(lm,type="response")
 lm.pred = rep(0,length(lm.probs))
 lm.pred[lm.probs>.5]=1
 table(lm.pred, trainlm$Diag)
 
-sum(diag(prop.table(table(lm.pred, truth=trainlm$Diag)))) # 100% Accuracy (Overfitted)
+sum(diag(prop.table(table(lm.pred, truth=trainlm$Diag)))) # 100% Accuracy 
 mod.select = stepAIC(lm) #this iteratively determines the best model using the AIC value
 
 ####################################################################
@@ -214,6 +234,7 @@ train_model <- function(layers){
   model %>% compile(
     loss = 'binary_crossentropy',
     optimizer = 'adam',
+    #optimizer = optimizer_adam(lr=0.01),
     metrics = 'accuracy'
   )
 
@@ -222,7 +243,7 @@ train_model <- function(layers){
   history <- model %>% fit(
     x_train, 
     y_train, 
-    epochs =500,
+    epochs = 400,
     batch_size = 5, 
     validation_split = 0.2,
     verbose=0,
@@ -246,8 +267,9 @@ plot(res[[3]])
 #64/64/32: 88.6,93.9
 #Epochs 300:
 #64/32/16 : 94.9
-#Epochs 400: 
-#64/32/16 : 96.0 #Choose this, validation results start to diverge after this point (see plot)
+#Epochs 400: (batch=5, lr=default from Adam, (64/32/16), binary_crossentropy) 
+#32/32/16 : 95.6
+#64/32/16 : 96.0 #Choose this setup
 #Epochs 500:
 #64/32/16 : 95.6
 #sigmoid:
@@ -260,9 +282,10 @@ table(y_train_vec, classes)
 
 
 # TEST
-score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5) # 97.4%
+score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5) # 98.25%
 
 classes <- res[[1]] %>% predict_classes(x_test, batch_size=5)
 table(y_test_vec, classes)
 
+plot_conf(classes, y_test_vec, "Neural Network Test Confusion Matrix")
 
