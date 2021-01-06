@@ -33,7 +33,7 @@ test = data[-train.idx,]
 
 # EDA
 
-# We can chech the relation between Diag and variables
+# We can check the relation between Diag and variables
 for (i in colnames(train)[-1]) {
   p1 <- ggplot(data=train, mapping = aes(x = !!rlang::sym(i), fill = Diag))
   p1 <- p1 + geom_histogram(aes(y = ..density..), alpha = 0.6, bins = 30) + ggtitle(paste0('Distribution of ', i, ' by Diagnosis'))
@@ -119,36 +119,8 @@ summary(svm.pca) # C=0.1, linear
 perf.pca = eval_perf(svm.pca$best.model, train_pca) 
 perf.pca[1] # 98.6%
 
-# The svm below uses only the variables which were identified as significant using the stepAIC method in the LogReg section below
-# This svm achieves 98.6% training accuracy with just 16 variables(/30)
-svm.out = tune(svm, Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
-              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train,
-              ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
-summary(svm.out)
-summary(svm.out$best.model) #C=1, linear
-perf.out = eval_perf(svm.out$best.model,train)
-perf.out[1] #98.6
 
-# TEST
-best.svm = svm(Diag~., data=train, prob=TRUE, cost=2, scale=TRUE, kernel='radial')
-
-test.hpo=eval_perf(best.svm, test) 
-test.hpo[1] #Acc: 98.2%
-
-plot_conf(test.hpo[[2]], test$Diag, 'SVM Test Confusion Matrix')
-
-pr.out.test<-prcomp(test[,-1],scale.=TRUE)
-plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]))
-
-# ROC curve
-test.pred = predict(best.svm, test, prob=TRUE)
-test.predprob = attr(test.pred, 'probabilities')[,1]
-roc.obj1 = roc(test$Diag, test.predprob)
-ggroc(roc.obj1)
-auc(roc.obj1)
-
-#####################################################################
-# Logistic Regression - Just used for feature selection
+# Feature Selection Using Logistic Regression
 #####################################################################
 library(MASS) # for the stepAIC method
 
@@ -157,7 +129,7 @@ trainlm$Diag = as.numeric(trainlm$Diag)-1
 testlm = test
 testlm$Diag = as.numeric(testlm$Diag)-1
 
-# TRAIN
+# LM TRAIN
 lm = glm(Diag~.,data=trainlm, family='binomial') 
 # glm.fit: algorithm did not converge
 # glm.fit: fitted probabilities numerically 0 or 1 occurred
@@ -172,6 +144,52 @@ table(lm.pred, trainlm$Diag)
 
 sum(diag(prop.table(table(lm.pred, truth=trainlm$Diag)))) # 100% Accuracy 
 mod.select = stepAIC(lm) #this iteratively determines the best model using the AIC value
+
+# The svm below uses only the variables which were identified as significant using the stepAIC method in the LogReg section 
+# This svm achieves 98.6% training accuracy with just 16 variables(/30)
+svm.out = tune(svm, Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
+              +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, data=train,
+              ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
+summary(svm.out)
+summary(svm.out$best.model) #C=1, linear
+perf.out = eval_perf(svm.out$best.model,train)
+perf.out[1] #98.6
+
+
+# Model below uses just those features which appear to have a visual separation between the distributions for malignant and benign classes
+svm.visselect = tune(svm, Diag~max_concpts+max_perim+max_rad+concave_points+concavity+max_concavity+max_area+area+perimeter+radius,
+                     data=train,ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
+summary(svm.visselect) # C=20, radial
+perf.visselect = eval_perf(svm.visselect$best.model, train)
+perf.visselect[1] # 97.4
+
+
+# TEST
+# Select model using all features
+best.svm = svm(Diag~., data=train, prob=TRUE, cost=2, scale=TRUE, kernel='radial')
+
+test.hpo=eval_perf(best.svm, test) 
+test.hpo[1] #Acc: 98.2%
+
+plot_conf(test.hpo[[2]], test$Diag, 'SVM Test Confusion Matrix')
+
+#Identify which points were misclassified
+test.hpo[[2]][test.hpo[[2]]!=test$Diag]
+
+#Attempt to visualize the misclassified points
+pr.out.test<-prcomp(test[,-1],scale.=TRUE)
+plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]),main="Misclassified Points - SVM")
+text(pr.out.test$x["69",1],pr.out.test$x["69",2], col=as.numeric(test["69",1]), label=69)
+text(pr.out.test$x["74",1],pr.out.test$x["74",2], col=as.numeric(test["74",1]), label=74)
+legend(-12, 9, legend=c("Benign","Malignant"), col=c("black","red"), pch=1)
+
+# ROC curve
+test.pred = predict(best.svm, test, prob=TRUE)
+test.predprob = attr(test.pred, 'probabilities')[,1]
+roc.obj1 = roc(test$Diag, test.predprob)
+ggroc(roc.obj1)
+auc(roc.obj1)
+
 
 ####################################################################
 # Neural Network
@@ -282,10 +300,18 @@ table(y_train_vec, classes)
 
 
 # TEST
-score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5) # 98.25%
+score <- res[[1]] %>% evaluate(x_test, y_test, batch_size = 5) # 98.2%
 
 classes <- res[[1]] %>% predict_classes(x_test, batch_size=5)
 table(y_test_vec, classes)
 
 plot_conf(classes, y_test_vec, "Neural Network Test Confusion Matrix")
 
+# Identify Misclassified Points
+
+test[classes!=y_test_vec,] #15, 482
+
+plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]), main="Misclassified Points - NN")
+text(pr.out.test$x["15",1],pr.out.test$x["15",2], col=as.numeric(test["15",1]), label=15)
+text(pr.out.test$x["482",1],pr.out.test$x["482",2], col=as.numeric(test["482",1]), label=482)
+legend(-12, 9, legend=c("Benign","Malignant"), col=c("black","red"), pch=1)
