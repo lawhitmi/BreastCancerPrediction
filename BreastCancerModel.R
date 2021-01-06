@@ -178,10 +178,10 @@ test.hpo[[2]][test.hpo[[2]]!=test$Diag]
 
 #Attempt to visualize the misclassified points
 pr.out.test<-prcomp(test[,-1],scale.=TRUE)
-plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]),main="Misclassified Points - SVM")
-text(pr.out.test$x["69",1],pr.out.test$x["69",2], col=as.numeric(test["69",1]), label=69)
-text(pr.out.test$x["74",1],pr.out.test$x["74",2], col=as.numeric(test["74",1]), label=74)
-legend(-12, 9, legend=c("Benign","Malignant"), col=c("black","red"), pch=1)
+plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]), pch=as.numeric(test.hpo[[2]]),main="Misclassified Points - SVM")
+text(pr.out.test$x["69",1]-0.35,pr.out.test$x["69",2]-0.25, label=69, col='darkblue')
+text(pr.out.test$x["74",1]-0.35,pr.out.test$x["74",2]-0.25, label=74, col='darkblue')
+legend(-12, 9, legend=c("True Benign","True Malignant","False Malignant", "False Benign"), col=c("black","red","black","red"), pch=c(1,2,2,1))
 
 # ROC curve
 test.pred = predict(best.svm, test, prob=TRUE)
@@ -311,7 +311,8 @@ plot_conf(classes, y_test_vec, "Neural Network Test Confusion Matrix")
 
 test[classes!=y_test_vec,] #15, 482
 
-plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]), main="Misclassified Points - NN")
-text(pr.out.test$x["15",1],pr.out.test$x["15",2], col=as.numeric(test["15",1]), label=15)
-text(pr.out.test$x["482",1],pr.out.test$x["482",2], col=as.numeric(test["482",1]), label=482)
-legend(-12, 9, legend=c("Benign","Malignant"), col=c("black","red"), pch=1)
+plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]), pch=as.numeric(classes)+1, main="Misclassified Points - NN")
+text(pr.out.test$x["15",1]-0.35,pr.out.test$x["15",2]-0.25, col='darkblue', label=15)
+text(pr.out.test$x["482",1]-0.45,pr.out.test$x["482",2]-0.35, col='darkblue', label=482)
+legend(-12, 9, legend=c("True Benign","True Malignant","False Malignant", "False Benign"), col=c("black","red","black","red"), pch=c(1,2,2,1))
+
