@@ -168,15 +168,6 @@ summary(svm.out$best.model) #C=1, linear
 perf.out = eval_perf(svm.out$best.model,train)
 perf.out[1] #98.6
 
-
-# Model below uses just those features which appear to have a visual separation between the distributions for malignant and benign classes
-svm.visselect = tune(svm, Diag~max_concpts+max_perim+max_rad+concave_points+concavity+max_concavity+max_area+area+perimeter+radius,
-                     data=train,ranges=list(cost=c(0.1,0.5,1,2,5,10,20,50), kernel=c('radial','linear','polynomial')), scale=TRUE)
-summary(svm.visselect) # C=20, radial
-perf.visselect = eval_perf(svm.visselect$best.model, train)
-perf.visselect[1] # 97.4
-
-
 # TEST
 # Select model using all features
 best.svm = svm(Diag~., data=train, prob=TRUE, cost=2, scale=TRUE, kernel='radial')
