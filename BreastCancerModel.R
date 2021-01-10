@@ -119,7 +119,20 @@ summary(svm.pca) # C=0.1, linear
 perf.pca = eval_perf(svm.pca$best.model, train_pca) 
 perf.pca[1] # 98.6%
 
-
+# Vary the # of PCs used
+pca.res = cbind(rep(NA,10), rep(NA,10))
+j=1
+for (i in c(5,10,12,15,17,20,22,25,27,30)) {
+  train_pca = cbind(as.data.frame(train$Diag),as.data.frame(pr.out$x[,1:i]))
+  colnames(train_pca)[1]='Diag'
+  pcasvm = svm(Diag~.,data=train_pca, cost=0.1,kernel='linear',scale=FALSE)
+  perf.pcasvm = eval_perf(pcasvm, train_pca)
+  pca.res[j,]=c(i, perf.pcasvm[[1]])
+  j=j+1
+}
+res.df=as.data.frame(pca.res)
+colnames(res.df) = c("# PCs","Accuracy")
+plot(res.df, main="Model Performance at Varying Numbers of PCs")
 # Feature Selection Using Logistic Regression
 #####################################################################
 library(MASS) # for the stepAIC method
@@ -190,6 +203,32 @@ roc.obj1 = roc(test$Diag, test.predprob)
 ggroc(roc.obj1)
 auc(roc.obj1)
 
+# Also test the best performing dimension reduction model
+best.dimred = svm(Diag~max_concpts+max_perim+max_smooth+fractal_dim+smoothness+radius+symmetry+max_area
+                  +concave_points+max_concavity+compactness+se_concpts+max_symm+se_fractdim+se_radius+max_text, 
+                  data=train, prob=TRUE, cost=1, scale=TRUE, kernel='linear')
+
+test.dimred=eval_perf(best.dimred, test) 
+test.dimred[1] #Acc: 98.2%
+
+plot_conf(test.dimred[[2]], test$Diag, 'SVM (DimRed) Test Confusion Matrix')
+
+#Identify which points were misclassified
+test.dimred[[2]][test.dimred[[2]]!=test$Diag]
+
+#Attempt to visualize the misclassified points
+pr.out.test<-prcomp(test[,-1],scale.=TRUE)
+plot(pr.out.test$x[,1:2], col=as.numeric(test[,1]), pch=as.numeric(test.dimred[[2]]),main="Misclassified Points - SVM")
+text(pr.out.test$x["69",1]-0.35,pr.out.test$x["69",2]-0.25, label=69, col='darkblue')
+text(pr.out.test$x["74",1]-0.35,pr.out.test$x["74",2]-0.25, label=74, col='darkblue')
+legend(-12, 9, legend=c("True Benign","True Malignant","False Malignant", "False Benign"), col=c("black","red","black","red"), pch=c(1,2,2,1))
+
+# ROC curve
+dimred.pred = predict(best.dimred, test, prob=TRUE)
+dimred.predprob = attr(test.pred, 'probabilities')[,1]
+roc.obj2 = roc(test$Diag, dimred.predprob)
+ggroc(roc.obj2)
+auc(roc.obj2)
 
 ####################################################################
 # Neural Network
@@ -275,7 +314,7 @@ train_model <- function(layers){
 
 # TRAIN
  
-layers = c(64,32,16)
+layers = c(64,32,32)
 res = train_model(layers)
 plot(res[[3]])
 #relu:
@@ -290,9 +329,9 @@ plot(res[[3]])
 #64/32/16 : 96.0 #Choose this setup
 #Epochs 500:
 #64/32/16 : 95.6
-#sigmoid:
-#64/32/16 : 92.3
-#64/32/32 : 90.3
+#sigmoid/400epochs:
+#64/32/16 : 91.7
+#64/32/32 : 92.3
 
 
 classes <- res[[1]] %>% predict_classes(x_train, batch_size=5)
